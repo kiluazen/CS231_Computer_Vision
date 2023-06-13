@@ -831,14 +831,17 @@ def spatial_batchnorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     N,C,H,W = dout.shape
-    x_iinput ,gamma, bn_param = cache
+    x_input, gamma, bn_param = cache
     dout = dout.transpose(1,0,2,3).reshape(C,-1)
-    dx, dgamma, dbeta = batchnorm_backward_alt(dout, cache)
-    dx = dx.reshape(C,N,H,W).transpose(1,0,2,3)
-    sqt_var = np.sqrt(np.var(x, axis=0)+ eps)
-    x_mean = x - np.mean(x, axis=0)
-    dgamma = np.sum( (x_mean/sqt_var)*dout,  axis = 0)
-    dbeta = np.sum(dout, axis=0)
+    dx_input, _, _ = batchnorm_backward_alt(dout, cache)
+    dx = dx_input.reshape(C,N,H,W).transpose(1,0,2,3)
+    
+    dbeta = np.sum(dout, axis=1)
+    eps = bn_param.get('eps',1e-5)
+    sqt_var = np.sqrt(np.var(x_input, axis=0)+ eps)
+    x_mean = x_input - np.mean(x_input, axis=0)
+    dgamma = np.sum( (x_mean/sqt_var)*dout,  axis =1)
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -877,8 +880,16 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     # and layer normalization!                                                #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
+    N,C,H,W = x.shape
+    x_g = x.reshape(N,G, C//G, H,W)        # that is some really great vectorizing for sure. BRILLIANT
+    x_mean = x_g - np.mean(x_g,axis=(2,3,4), keepdims= True)
     pass
+    var = np.var(x_g ,axis=(2,3,4), keepdims= True)
+    x_out = (x_mean)/np.sqrt(var + eps)
+
+    x_out = x_out.reshape(N,C,H,W)
+    out = gamma*x_out + beta
+    cache = (x,G, gamma,gn_param)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -908,7 +919,25 @@ def spatial_groupnorm_backward(dout, cache):
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
     pass
+    x, G,gamma, ln_param = cache
+    eps = ln_param.get('eps', 1e-5)
 
+    N,C,H,W = x.shape
+    x_g = x.reshape(N,G,C//G, H,W)
+    x_mean = x_g - np.mean(x_g,axis=(2,3,4), keepdims= True)
+    pass
+    var = np.var(x_g ,axis=(2,3,4), keepdims= True)
+    sqt_var = np.sqrt(var + eps)
+    gamma = gamma.reshape(1,G,C//G,1,1)
+    dout_group = dout.reshape(N,G, C//G ,H,W)
+
+    dgamma = np.sum((x_mean/sqt_var)*dout_group,  axis=(0,3,4)).reshape(1,C,1,1)# trouble with broadcastung here.
+    # dbeta = np.sum(dout_group, axis=(0,3,4)).reshape(1,C,1,1)
+    dbeta = np.sum(dout, axis=(0,2,3),keepdims=True) #both fucking work.
+
+    dx = (dout_group*gamma)/sqt_var + np.mean(dout_group*gamma*-0.5*x_mean/(sqt_var**3), axis =(2,3,4), keepdims=True)*2*x_mean  + np.mean(dout_group*gamma*-1/sqt_var, axis =(2,3,4), keepdims=True)
+
+    dx = dx.reshape(N,C,H,W)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
